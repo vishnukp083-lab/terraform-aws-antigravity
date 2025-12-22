@@ -52,30 +52,31 @@ jobs:
           echo "EC2_IP=$(cat ec2_ip.txt)" >> $GITHUB_ENV
 
   deploy:
-    name: Deploy Website to EC2
-    needs: terraform
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  name: Deploy Website to EC2
+  needs: terraform
+  runs-on: ubuntu-latest
+  steps:
+    # 1️⃣ Checkout repository
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      # 1️⃣ Setup SSH
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ env.EC2_IP }} >> ~/.ssh/known_hosts
+    # 2️⃣ Setup SSH with your existing private key (from GitHub Secrets)
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ env.EC2_IP }} >> ~/.ssh/known_hosts
 
-      # 2️⃣ Copy website files
-      - name: Copy app folder to EC2
-        run: |
-          scp -r app/* ${{ secrets.EC2_USER }}@${{ env.EC2_IP }}:/home/${{ secrets.EC2_USER }}/app/
+    # 3️⃣ Copy website files to EC2
+    - name: Copy app folder to EC2
+      run: |
+        scp -r app/* ${{ secrets.EC2_USER }}@${{ env.EC2_IP }}:/home/${{ secrets.EC2_USER }}/app/
 
-      # 3️⃣ Run deploy script on EC2
-      - name: Run deploy script
-        run: |
-          ssh ${{ secrets.EC2_USER }}@${{ env.EC2_IP }} "bash /home/${{ secrets.EC2_USER }}/deploy_app.sh"
+    # 4️⃣ Run deploy script on EC2
+    - name: Run deploy script
+      run: |
+        ssh ${{ secrets.EC2_USER }}@${{ env.EC2_IP }} "bash /home/${{ secrets.EC2_USER }}/deploy_app.sh"
 
   visualize:
     name: Terraform Graph for Antigravity
