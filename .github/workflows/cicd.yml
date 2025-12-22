@@ -20,7 +20,7 @@ jobs:
         with:
           terraform_version: 1.6.0
 
-      # 3️⃣ Configure AWS credentials
+      # 3️⃣ Configure AWS credentials from GitHub Secrets
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -43,8 +43,8 @@ jobs:
         working-directory: infrastructure/environment/dev
         run: terraform apply -auto-approve
 
-      # 7️⃣ Output EC2 Public IP (for deploy)
-      - name: Terraform Output
+      # 7️⃣ Capture EC2 Public IP
+      - name: Terraform Output EC2 IP
         id: ec2
         working-directory: infrastructure/environment/dev
         run: |
@@ -52,38 +52,37 @@ jobs:
           echo "EC2_IP=$(cat ec2_ip.txt)" >> $GITHUB_ENV
 
   deploy:
-  name: Deploy Website to EC2
-  needs: terraform
-  runs-on: ubuntu-latest
-  steps:
-    # 1️⃣ Checkout repository
-    - name: Checkout code
-      uses: actions/checkout@v4
+    name: Deploy Website to EC2
+    needs: terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    # 2️⃣ Setup SSH with your existing private key (from GitHub Secrets)
-    - name: Setup SSH
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H ${{ env.EC2_IP }} >> ~/.ssh/known_hosts
+      # 1️⃣ Setup SSH using existing private key (from GitHub Secrets)
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.EC2_IP }} >> ~/.ssh/known_hosts
 
-    # 3️⃣ Copy website files to EC2
-    - name: Copy app folder to EC2
-      run: |
-        scp -r app/* ${{ secrets.EC2_USER }}@${{ env.EC2_IP }}:/home/${{ secrets.EC2_USER }}/app/
+      # 2️⃣ Copy website files to EC2
+      - name: Copy app folder to EC2
+        run: |
+          scp -r app/* ${{ secrets.EC2_USER }}@${{ env.EC2_IP }}:/home/${{ secrets.EC2_USER }}/app/
 
-    # 4️⃣ Run deploy script on EC2
-    - name: Run deploy script
-      run: |
-        ssh ${{ secrets.EC2_USER }}@${{ env.EC2_IP }} "bash /home/${{ secrets.EC2_USER }}/deploy_app.sh"
+      # 3️⃣ Run deploy script on EC2
+      - name: Run deploy script
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ env.EC2_IP }} "bash /home/${{ secrets.EC2_USER }}/deploy_app.sh"
 
   visualize:
     name: Terraform Graph for Antigravity
     needs: terraform
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Terraform
@@ -91,12 +90,14 @@ jobs:
         with:
           terraform_version: 1.6.0
 
+      # 1️⃣ Generate Terraform graph
       - name: Generate Terraform graph
         working-directory: infrastructure/environment/dev
         run: |
           terraform graph > diagrams/infra.dot
 
-      - name: Convert and Render Antigravity
+      # 2️⃣ Optional: Convert to Antigravity format
+      - name: Render Antigravity visualization
         run: |
           python scripts/convert_dot_to_graph.py
           python scripts/render_antigravity.py
