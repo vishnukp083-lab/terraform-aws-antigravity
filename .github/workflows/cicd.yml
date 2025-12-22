@@ -31,7 +31,8 @@ jobs:
         run: |
          echo "AWS_REGION=$AWS_REGION"
          aws sts get-caller-identity
-
+        env:
+          AWS_PROFILE: ""
 
       # 4️⃣ Terraform Init
       - name: Terraform Init
