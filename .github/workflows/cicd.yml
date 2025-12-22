@@ -30,23 +30,23 @@ jobs:
 
       # 4️⃣ Terraform Init
       - name: Terraform Init
-        working-directory: infrastructure/environments/dev
+        working-directory: infrastructure/environment/dev
         run: terraform init
 
       # 5️⃣ Terraform Plan
       - name: Terraform Plan
-        working-directory: infrastructure/environments/dev
+        working-directory: infrastructure/environment/dev
         run: terraform plan
 
       # 6️⃣ Terraform Apply
       - name: Terraform Apply
-        working-directory: infrastructure/environments/dev
+        working-directory: infrastructure/environment/dev
         run: terraform apply -auto-approve
 
       # 7️⃣ Output EC2 Public IP (for deploy)
       - name: Terraform Output
         id: ec2
-        working-directory: infrastructure/environments/dev
+        working-directory: infrastructure/environment/dev
         run: |
           terraform output -raw ec2_public_ip > ec2_ip.txt
           echo "EC2_IP=$(cat ec2_ip.txt)" >> $GITHUB_ENV
@@ -91,7 +91,7 @@ jobs:
           terraform_version: 1.6.0
 
       - name: Generate Terraform graph
-        working-directory: infrastructure/environments/dev
+        working-directory: infrastructure/environment/dev
         run: |
           terraform graph > diagrams/infra.dot
 
