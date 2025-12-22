@@ -1,0 +1,6 @@
+name: Terraform + Deploy + Antigravity
+
+on:
+  push:
+    branches:
+      - main
