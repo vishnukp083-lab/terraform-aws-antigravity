@@ -27,6 +27,11 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+     - name: Check AWS env
+       run: |
+         echo "AWS_REGION=$AWS_REGION"
+         aws sts get-caller-identity
+
 
       # 4️⃣ Terraform Init
       - name: Terraform Init
