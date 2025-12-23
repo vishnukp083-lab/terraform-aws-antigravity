@@ -71,16 +71,15 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ env.EC2_IP }} >> ~/.ssh/known_hosts
 
-      # 2️⃣ Copy website files to EC2
-      - name: Copy app folder to EC2
+      - name: Copy scripts and app
         run: |
+          scp -r scripts/* ${{ secrets.EC2_USER }}@${{ env.EC2_IP }}:/home/${{ secrets.EC2_USER }}/
           scp -r app/* ${{ secrets.EC2_USER }}@${{ env.EC2_IP }}:/home/${{ secrets.EC2_USER }}/app/
 
-      # 3️⃣ Run deploy script on EC2
-      - name: Run deploy script
+      - name: Run deploy scripts
         run: |
+          ssh ${{ secrets.EC2_USER }}@${{ env.EC2_IP }} "bash /home/${{ secrets.EC2_USER }}/deploy.sh"
           ssh ${{ secrets.EC2_USER }}@${{ env.EC2_IP }} "bash /home/${{ secrets.EC2_USER }}/deploy_app.sh"
-
   visualize:
     name: Terraform Graph for Antigravity
     needs: terraform
