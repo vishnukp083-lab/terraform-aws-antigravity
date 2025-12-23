@@ -47,13 +47,13 @@ jobs:
         working-directory: infrastructure/environment/dev
         run: terraform apply -auto-approve
 
-      # 7️⃣ Capture EC2 Public IP
-      - name: Terraform Output EC2 IP
+      - name: Capture EC2 IP
         id: ec2
         working-directory: infrastructure/environment/dev
         run: |
-          terraform output -raw instance_public_ip > ec2_ip.txt
-          echo "EC2_IP=$(cat ec2_ip.txt)" >> $GITHUB_ENV
+          EC2_IP=$(terraform output -raw instance_public_ip)
+          echo "EC2_IP=$EC2_IP" >> $GITHUB_ENV
+          echo "EC2 IP = $EC2_IP"
 
 
 
@@ -75,15 +75,14 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ env.EC2_IP }} >> ~/.ssh/known_hosts
 
-      - name: Copy scripts and app
+        #Copy deploy scripts to EC2
+      - name: Copy Deploy Scripts
         run: |
-          scp -r scripts/* ${{ secrets.EC2_USER }}@${{ env.EC2_IP }}:/home/${{ secrets.EC2_USER }}/
-          scp -r app/* ${{ secrets.EC2_USER }}@${{ env.EC2_IP }}:/home/${{ secrets.EC2_USER }}/app/
+          scp -o StrictHostKeyChecking=no deploy.sh deploy_app.sh ec2-user@${{ env.EC2_IP }}:~
 
-      - name: Run deploy scripts
+      - name: Run Deploy Scripts
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ env.EC2_IP }} "bash /home/${{ secrets.EC2_USER }}/deploy.sh"
-          ssh ${{ secrets.EC2_USER }}@${{ env.EC2_IP }} "bash /home/${{ secrets.EC2_USER }}/deploy_app.sh"
+          ssh -o StrictHostKeyChecking=no ec2-user@${{ env.EC2_IP }} 'bash ~/deploy.sh && bash ~/deploy_app.sh'
   visualize:
     name: Terraform Graph for Antigravity
     needs: terraform
