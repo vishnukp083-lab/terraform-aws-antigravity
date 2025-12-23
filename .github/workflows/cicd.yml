@@ -20,18 +20,17 @@ jobs:
         with:
           terraform_version: 1.6.0
 
-      # 3️⃣ Configure AWS credentials from GitHub Secrets
+      # 3️⃣ Configure AWS credentials (no profile needed)
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-      - name: Check AWS env
-        run: |
-         echo "AWS_REGION=$AWS_REGION"
-         aws sts get-caller-identity
 
+      # Optional debug to confirm AWS access
+      - name: Check AWS identity
+        run: aws sts get-caller-identity
 
       # 4️⃣ Terraform Init
       - name: Terraform Init
@@ -64,7 +63,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1️⃣ Setup SSH using existing private key (from GitHub Secrets)
+      # 1️⃣ Setup SSH using private key from GitHub Secrets
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -98,10 +97,9 @@ jobs:
       # 1️⃣ Generate Terraform graph
       - name: Generate Terraform graph
         working-directory: infrastructure/environment/dev
-        run: |
-          terraform graph > diagrams/infra.dot
+        run: terraform graph > diagrams/infra.dot
 
-      # 2️⃣ Optional: Convert to Antigravity format
+      # 2️⃣ Convert to Antigravity format and render
       - name: Render Antigravity visualization
         run: |
           python scripts/convert_dot_to_graph.py
