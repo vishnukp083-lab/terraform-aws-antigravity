@@ -54,8 +54,7 @@ jobs:
         run: |
           terraform output -raw instance_public_ip > ec2_ip.txt
           echo "EC2_IP=$(cat ec2_ip.txt)" >> $GITHUB_ENV
-      - name: Debug EC2 IP
-        run: echo "Captured EC2 IP:${{env.EC2_IP}}"
+
 
 
   deploy:
@@ -65,6 +64,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      - name: Debug EC2 IP
+        run: echo "Captured EC2 IP:${{env.EC2_IP}}"
 
       # 1️⃣ Setup SSH using private key from GitHub Secrets
       - name: Setup SSH
