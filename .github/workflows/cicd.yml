@@ -9,6 +9,8 @@ jobs:
   terraform:
     name: Terraform Apply
     runs-on: ubuntu-latest
+    outputs:
+      ec2_ip: ${{ steps.ec2.outputs.ec2_ip }}
     steps:
       # 1️⃣ Checkout repository
       - name: Checkout code
@@ -20,7 +22,7 @@ jobs:
         with:
           terraform_version: 1.6.0
 
-      # 3️⃣ Configure AWS credentials (no profile needed)
+      # 3️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -28,34 +30,31 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # Optional debug to confirm AWS access
-      - name: Check AWS identity
-        run: aws sts get-caller-identity
-
       # 4️⃣ Terraform Init
       - name: Terraform Init
         working-directory: infrastructure/environment/dev
         run: terraform init
 
-      # 5️⃣ Terraform Plan
-      - name: Terraform Plan
+      # 5️⃣ Terraform Validate
+      - name: Terraform Validate
         working-directory: infrastructure/environment/dev
-        run: terraform plan
+        run: terraform validate
 
       # 6️⃣ Terraform Apply
+      # IMPORTANT: This requires Remote State (S3) to work correctly in CI.
+      # If running without remote state, this might try to recreate resources.
       - name: Terraform Apply
         working-directory: infrastructure/environment/dev
         run: terraform apply -auto-approve
 
+      # 7️⃣ Capture EC2 IP
       - name: Capture EC2 IP
         id: ec2
         working-directory: infrastructure/environment/dev
         run: |
           EC2_IP=$(terraform output -raw instance_public_ip)
-          echo "EC2_IP=$EC2_IP" >> $GITHUB_ENV
-          echo "EC2 IP = $EC2_IP"
-
-
+          echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
+          echo "Captured IP: $EC2_IP"
 
   deploy:
     name: Deploy Website to EC2
@@ -64,52 +63,37 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Debug EC2 IP
-        run: echo "Captured EC2 IP:${{env.EC2_IP}}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       # 1️⃣ Setup SSH using private key from GitHub Secrets
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-         # ssh-keyscan -H ${{ env.EC2_IP }} >> ~/.ssh/known_hosts
+          
+          # Add Host to Known Hosts to avoid interactive prompt
+          ssh-keyscan -H ${{ needs.terraform.outputs.ec2_ip }} >> ~/.ssh/known_hosts
 
+      # 2️⃣ Deploy to EC2
       - name: Deploy to EC2
         run: |
-          # Save private key
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-
-          # Define EC2 IP
-          EC2_IP=$(terraform -chdir=infrastructure/environment/dev output -raw instance_public_ip)
-          echo "EC2 IP = $EC2_IP"
-          # Copy deploy scripts to EC2
-          scp -o StrictHostKeyChecking=no deploy.sh deploy_app.sh ec2-user@$EC2_IP:~
-
-          # Run deploy scripts on EC2
-          ssh -o StrictHostKeyChecking=no ec2-user@$EC2_IP 'bash ~/deploy.sh && bash ~/deploy_app.sh'
-  visualize:
-    name: Terraform Graph for Antigravity
-    needs: terraform
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.6.0
-
-      # 1️⃣ Generate Terraform graph
-      - name: Generate Terraform graph
-        working-directory: infrastructure/environment/dev
-        run: terraform graph > diagrams/infra.dot
-
-      # 2️⃣ Convert to Antigravity format and render
-      - name: Render Antigravity visualization
-        run: |
-          python scripts/convert_dot_to_graph.py
-          python scripts/render_antigravity.py
+          HOST=${{ needs.terraform.outputs.ec2_ip }}
+          USER=${{ secrets.EC2_USER }}
+          
+          echo "Deploying to $USER@$HOST..."
+          
+          # Create app directory if it doesn't exist
+          ssh $USER@$HOST "mkdir -p /home/$USER/app"
+          
+          # Copy website files and deploy script
+          scp -r index.html style.css script.js deploy.sh $USER@$HOST:/home/$USER/app/
+          
+          # Execute deploy script
+          ssh $USER@$HOST "chmod +x /home/$USER/app/deploy.sh && cd /home/$USER/app && sudo ./deploy.sh" 
