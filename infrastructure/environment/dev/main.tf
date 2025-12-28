@@ -1,12 +1,16 @@
 # provider block
-provider "aws"{
-  source  = "hashicorp/aws"
-  version = "~> 5.0"
-  region = "us-east-2"
-  }
-    tls = {
-      source = "hashicorp/tls"
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
+  }
+}
 #VPC
   resource "aws_vpc" "app_study_vpc"{
     cidr_block = var.vpc_cidr
