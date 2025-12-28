@@ -87,3 +87,4 @@ jobs:
           scp index.html style.css script.js deploy.sh $USER@$HOST:~/app/
           ssh $USER@$HOST "chmod +x ~/app/deploy.sh && sudo ~/app/deploy.sh"
 
+
