@@ -1,4 +1,4 @@
-name: Terraform + Deploy + Antigravity
+name: Terraform + Deploy Website
 
 on:
   push:
@@ -7,11 +7,10 @@ on:
 
 jobs:
   terraform:
-    name: Provision EC2
     runs-on: ubuntu-latest
     outputs:
-      ec2_ip: ${{ steps.tf_out.outputs.ec2_ip }}
-
+      ec2_ip: ${{ steps.capture.outputs.ec2_ip }}
+      private_key: ${{ steps.capture.outputs.private_key }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,65 +27,48 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Terraform Init
+      - name: Terraform Init & Apply
         working-directory: infrastructure/environment/dev
-        run: terraform init
+        run: |
+          terraform init
+          terraform apply -auto-approve
 
-      - name: Terraform Apply
-        working-directory: infrastructure/environment/dev
-        run: terraform apply -auto-approve
-
-      - name: Capture outputs
-        id: tf_out
+      - id: capture
+        name: Capture Terraform Outputs
         working-directory: infrastructure/environment/dev
         run: |
           echo "ec2_ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
-          terraform output -raw private_key_pem > private_key.pem
-
-      - name: Upload SSH key
-        uses: actions/upload-artifact@v4
-        with:
-          name: ssh-key
-          path: infrastructure/environment/dev/private_key.pem
+          echo "private_key=$(terraform output -raw private_key_pem)" >> $GITHUB_OUTPUT
 
   deploy:
-    name: Deploy Website
     needs: terraform
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download SSH key
-        uses: actions/download-artifact@v4
-        with:
-          name: ssh-key
-
       - name: Setup SSH
         run: |
-         mkdir -p ~/.ssh
-         terraform output -raw private_key_pem | tr -d '\r' > ~/.ssh/id_rsa
-         chmod 600 ~/.ssh/id_rsa
+          mkdir -p ~/.ssh
+          # Write private key, remove CRLF if copied from Windows
+          echo "${{ needs.terraform.outputs.private_key }}" | tr -d '\r' > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
-         echo "Waiting for SSH to become available..."
-         for i in {1..30}; do
-         if ssh-keyscan -H ${{ needs.terraform.outputs.ec2_ip }} >> ~/.ssh/known_hosts 2>/dev/null; then
-         echo "SSH is ready"
-         break
-         fi
-         sleep 10
-         done
+      - name: Wait for EC2 SSH
+        run: |
+          for i in {1..30}; do
+            if nc -zv ${{ needs.terraform.outputs.ec2_ip }} 22; then
+              echo "SSH is ready"
+              break
+            fi
+            sleep 10
+          done
 
-
-      - name: Deploy to EC2
+      - name: Copy app & Deploy
         run: |
           HOST=${{ needs.terraform.outputs.ec2_ip }}
           USER=ec2-user
 
-          ssh $USER@$HOST "mkdir -p ~/app"
-          scp index.html style.css script.js deploy.sh $USER@$HOST:~/app/
-          ssh $USER@$HOST "chmod +x ~/app/deploy.sh && sudo ~/app/deploy.sh"
-
-
-
+          ssh -o StrictHostKeyChecking=no $USER@$HOST "mkdir -p ~/app"
+          scp -o StrictHostKeyChecking=no -r deploy.sh deploy_app.sh index.html style.css script.js $USER@$HOST:~/app/
+          ssh -o StrictHostKeyChecking=no $USER@$HOST "chmod +x ~/app/*.sh && ~/app/deploy_app.sh"
