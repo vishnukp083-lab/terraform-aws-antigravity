@@ -1,4 +1,4 @@
-name: Terraform + Deploy Website
+name: Terraform + Deploy + Antigravity
 
 on:
   push:
@@ -7,15 +7,70 @@ on:
 
 jobs:
   terraform:
+    name: Terraform Apply
     runs-on: ubuntu-latest
+    outputs:
+      ec2_ip: ${{ steps.output_capture.outputs.ec2_ip }}
+      private_key: ${{ steps.output_capture.outputs.private_key }}
     steps:
+      # 1️⃣ Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2️⃣ Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.0
+
+      # 3️⃣ Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # 4️⃣ Terraform Init
+      - name: Terraform Init
+        working-directory: infrastructure/environment/dev
+        run: terraform init
+
+      # 5️⃣ Terraform Validate
+      - name: Terraform Validate
+        working-directory: infrastructure/environment/dev
+        run: terraform validate
+
+      # 6️⃣ Terraform Apply
+      # IMPORTANT: This requires Remote State (S3) to work correctly in CI.
+      # If running without remote state, this might try to recreate resources.
+      - name: Terraform Apply
+        working-directory: infrastructure/environment/dev
+        run: terraform apply -auto-approve
+
+      # 7️⃣ Capture EC2 IP & Private Key
+      - name: Capture Outputs
+        id: output_capture
+        working-directory: infrastructure/environment/dev
+        run: |
+          EC2_IP=$(terraform output -raw instance_public_ip)
+          echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
+          
+          # Capture Private Key with multiline delimiter
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "private_key<<$EOF" >> $GITHUB_OUTPUT
+          terraform output -raw private_key_pem >> $GITHUB_OUTPUT
+          echo "$EOF" >> $GITHUB_OUTPUT
+          
+          echo "Captured IP: $EC2_IP"
+
+  deploy:
+    name: Deploy Website to EC2
+    needs: terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -24,69 +79,32 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Terraform Init & Apply
-        working-directory: infrastructure/environment/dev
-        run: |
-          terraform init
-          terraform apply -auto-approve
-
-      - name: Save Terraform Outputs
-        working-directory: infrastructure/environment/dev
-        run: |
-          terraform output -raw instance_public_ip > ec2_ip.txt
-          terraform output -raw private_key_pem > private_key.pem
-
-      - name: Upload Private Key & EC2 IP
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-artifacts
-          path: |
-            infrastructure/environment/dev/private_key.pem
-            infrastructure/environment/dev/ec2_ip.txt
-
-  deploy:
-    needs: terraform
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download Terraform Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-artifacts
-          path: ./artifacts
-
+      # 1️⃣ Setup SSH using dynamic private key from Terraform
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          cp ./artifacts/private_key.pem ~/.ssh/id_rsa
+          echo "${{ needs.terraform.outputs.private_key }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          EC2_IP=$(cat ./artifacts/ec2_ip.txt)
-          echo "EC2 IP: $EC2_IP"
-          ssh-keyscan -H $EC2_IP >> ~/.ssh/known_hosts
+          
+          # Add Host to Known Hosts to avoid interactive prompt
+          ssh-keyscan -H ${{ needs.terraform.outputs.ec2_ip }} >> ~/.ssh/known_hosts
 
-      - name: Wait for EC2 SSH (with retry)
+      # 2️⃣ Deploy to EC2
+      - name: Deploy to EC2
         run: |
-          EC2_IP=$(cat ./artifacts/ec2_ip.txt)
-          echo "Waiting for SSH to be ready on $EC2_IP ..."
-          ATTEMPTS=0
-          MAX_RETRIES=30
-          until ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@$EC2_IP "echo SSH ready" 2>/dev/null; do
-            ATTEMPTS=$((ATTEMPTS+1))
-            if [ $ATTEMPTS -ge $MAX_RETRIES ]; then
-              echo "SSH is still not available after $MAX_RETRIES attempts. Exiting."
-              exit 1
-            fi
-            echo "SSH not ready yet. Retry $ATTEMPTS/$MAX_RETRIES ..."
-            sleep 10
-          done
-          echo "SSH is ready!"
+          HOST=${{ needs.terraform.outputs.ec2_ip }}
+          USER=${{ secrets.EC2_USER }}
+          
+          echo "Deploying to $USER@$HOST..."
+          
+          # Create app directory if it doesn't exist
+          ssh $USER@$HOST "mkdir -p /home/$USER/app"
+          
+          # Copy website files and deploy script
+          scp -r index.html style.css script.js deploy.sh $USER@$HOST:/home/$USER/app/
+          
+          # Execute deploy script
+          ssh $USER@$HOST "chmod +x /home/$USER/app/deploy.sh && cd /home/$USER/app && sudo ./deploy.sh"
 
-      - name: Copy App & Deploy
-        run: |
-          EC2_IP=$(cat ./artifacts/ec2_ip.txt)
-          USER=ec2-user
-          ssh -o StrictHostKeyChecking=no $USER@$EC2_IP "mkdir -p ~/app"
-          scp -o StrictHostKeyChecking=no -r deploy.sh deploy_app.sh index.html style.css script.js $USER@$EC2_IP:~/app/
-          ssh -o StrictHostKeyChecking=no $USER@$EC2_IP "chmod +x ~/app/*.sh && ~/app/deploy_app.sh"
+
+
