@@ -66,9 +66,17 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          mv private_key.pem ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ needs.terraform.outputs.ec2_ip }} >> ~/.ssh/known_hosts
+
+          echo "Waiting for SSH to become available..."
+          for i in {1..30}; do
+          if ssh-keyscan -H ${{ needs.terraform.outputs.ec2_ip }} >> ~/.ssh/known_hosts 2>/dev/null; then
+          echo "SSH is ready"
+          break
+          fi
+          sleep 10
+          done
 
       - name: Deploy to EC2
         run: |
@@ -78,3 +86,4 @@ jobs:
           ssh $USER@$HOST "mkdir -p ~/app"
           scp index.html style.css script.js deploy.sh $USER@$HOST:~/app/
           ssh $USER@$HOST "chmod +x ~/app/deploy.sh && sudo ~/app/deploy.sh"
+
