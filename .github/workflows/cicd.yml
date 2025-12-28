@@ -2,7 +2,7 @@ name: Terraform + Deploy + Antigravity
 
 on:
   push:
-    branches:
+    branches
       - main
 
 jobs:
@@ -97,3 +97,4 @@ jobs:
           
           # Execute deploy script
           ssh $USER@$HOST "chmod +x /home/$USER/app/deploy.sh && cd /home/$USER/app && sudo ./deploy.sh" 
+
