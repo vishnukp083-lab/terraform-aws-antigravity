@@ -1,9 +1,12 @@
 # provider block
 provider "aws"{
-
+  source  = "hashicorp/aws"
+  version = "~> 5.0"
   region = "us-east-2"
   }
-
+    tls = {
+      source = "hashicorp/tls"
+    }
 #VPC
   resource "aws_vpc" "app_study_vpc"{
     cidr_block = var.vpc_cidr
@@ -79,7 +82,7 @@ egress{
 resource "aws_instance" "app_study_instance"{
     ami      = var.ec2_ami
     instance_type = "t3.micro"
-
+    key_name               = aws_key_pair.generated_key.key_name
     subnet_id = aws_subnet.app_study_subnet.id
     vpc_security_group_ids = [aws_security_group.app_study_sg.id]
 
