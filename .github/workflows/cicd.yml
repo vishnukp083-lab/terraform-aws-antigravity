@@ -60,6 +60,7 @@ jobs:
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "private_key<<$EOF" >> $GITHUB_OUTPUT
           terraform output -raw private_key_pem >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
           echo "$EOF" >> $GITHUB_OUTPUT
           
           echo "Captured IP: $EC2_IP"
