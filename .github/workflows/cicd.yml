@@ -8,8 +8,6 @@ on:
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    outputs:
-      ec2_ip: ${{ steps.capture.outputs.ec2_ip }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,23 +30,19 @@ jobs:
           terraform init
           terraform apply -auto-approve
 
-      - id: capture
-        name: Capture Terraform Outputs
+      - name: Save Terraform Outputs
         working-directory: infrastructure/environment/dev
         run: |
-          # Save EC2 IP to GitHub output
-          echo "ec2_ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
-          # Save private key to a file (artifact) instead of output
+          terraform output -raw instance_public_ip > ec2_ip.txt
           terraform output -raw private_key_pem > private_key.pem
-          chmod 600 private_key.pem
-          # Upload as artifact for deploy job
-          echo "private_key_file=private_key.pem" >> $GITHUB_OUTPUT
 
-      - name: Upload private key for deploy
-        uses: actions/upload-artifact@v3
+      - name: Upload Private Key & EC2 IP
+        uses: actions/upload-artifact@v4
         with:
-          name: ec2-private-key
-          path: infrastructure/environment/dev/private_key.pem
+          name: terraform-artifacts
+          path: |
+            infrastructure/environment/dev/private_key.pem
+            infrastructure/environment/dev/ec2_ip.txt
 
   deploy:
     needs: terraform
@@ -57,31 +51,42 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download private key
-        uses: actions/download-artifact@v3
+      - name: Download Terraform Artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: ec2-private-key
-          path: ~/.ssh/
+          name: terraform-artifacts
+          path: ./artifacts
 
       - name: Setup SSH
         run: |
-          chmod 600 ~/.ssh/private_key.pem
+          mkdir -p ~/.ssh
+          cp ./artifacts/private_key.pem ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          EC2_IP=$(cat ./artifacts/ec2_ip.txt)
+          echo "EC2 IP: $EC2_IP"
+          ssh-keyscan -H $EC2_IP >> ~/.ssh/known_hosts
 
-      - name: Wait for EC2 SSH
+      - name: Wait for EC2 SSH (with retry)
         run: |
-          for i in {1..30}; do
-            if nc -zv ${{ needs.terraform.outputs.ec2_ip }} 22; then
-              echo "SSH is ready"
-              break
+          EC2_IP=$(cat ./artifacts/ec2_ip.txt)
+          echo "Waiting for SSH to be ready on $EC2_IP ..."
+          ATTEMPTS=0
+          MAX_RETRIES=30
+          until ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@$EC2_IP "echo SSH ready" 2>/dev/null; do
+            ATTEMPTS=$((ATTEMPTS+1))
+            if [ $ATTEMPTS -ge $MAX_RETRIES ]; then
+              echo "SSH is still not available after $MAX_RETRIES attempts. Exiting."
+              exit 1
             fi
+            echo "SSH not ready yet. Retry $ATTEMPTS/$MAX_RETRIES ..."
             sleep 10
           done
+          echo "SSH is ready!"
 
-      - name: Copy app & Deploy
+      - name: Copy App & Deploy
         run: |
-          HOST=${{ needs.terraform.outputs.ec2_ip }}
+          EC2_IP=$(cat ./artifacts/ec2_ip.txt)
           USER=ec2-user
-
-          ssh -i ~/.ssh/private_key.pem -o StrictHostKeyChecking=no $USER@$HOST "mkdir -p ~/app"
-          scp -i ~/.ssh/private_key.pem -o StrictHostKeyChecking=no -r deploy.sh deploy_app.sh index.html style.css script.js $USER@$HOST:~/app/
-          ssh -i ~/.ssh/private_key.pem -o StrictHostKeyChecking=no $USER@$HOST "chmod +x ~/app/*.sh && ~/app/deploy_app.sh"
+          ssh -o StrictHostKeyChecking=no $USER@$EC2_IP "mkdir -p ~/app"
+          scp -o StrictHostKeyChecking=no -r deploy.sh deploy_app.sh index.html style.css script.js $USER@$EC2_IP:~/app/
+          ssh -o StrictHostKeyChecking=no $USER@$EC2_IP "chmod +x ~/app/*.sh && ~/app/deploy_app.sh"
