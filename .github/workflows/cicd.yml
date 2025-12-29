@@ -13,18 +13,15 @@ jobs:
       ec2_ip: ${{ steps.output_capture.outputs.ec2_ip }}
       private_key: ${{ steps.output_capture.outputs.private_key }}
     steps:
-      # 1️⃣ Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.6.0
           terraform_wrapper: false
 
-      # 3️⃣ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -32,38 +29,32 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # 4️⃣ Terraform Init
       - name: Terraform Init
         working-directory: infrastructure/environment/dev
         run: terraform init
 
-      # 5️⃣ Terraform Validate
       - name: Terraform Validate
         working-directory: infrastructure/environment/dev
         run: terraform validate
 
-      # 6️⃣ Terraform Apply
-      # IMPORTANT: This requires Remote State (S3) to work correctly in CI.
-      # If running without remote state, this might try to recreate resources.
       - name: Terraform Apply
         working-directory: infrastructure/environment/dev
         run: terraform apply -auto-approve
 
-      # 7️⃣ Capture EC2 IP & Private Key
       - name: Capture Outputs
         id: output_capture
         working-directory: infrastructure/environment/dev
         run: |
           EC2_IP=$(terraform output -raw instance_public_ip)
           echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
-          
+
           # Capture Private Key with multiline delimiter
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "private_key<<$EOF" >> $GITHUB_OUTPUT
           terraform output -raw private_key_pem >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
           echo "$EOF" >> $GITHUB_OUTPUT
-          
+
           echo "Captured IP: $EC2_IP"
 
   deploy:
@@ -81,45 +72,41 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # 1️⃣ Setup SSH using dynamic private key from Terraform
-      
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           # Write private key (expand variable)
           cat <<EOF > ~/.ssh/id_ed25519
-          ${{ needs.terraform.outputs.private_key }}
-          EOF 
+${{ needs.terraform.outputs.private_key }}
+EOF
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Wait for EC2 SSH and add to known_hosts
         run: |
-         HOST=${{ needs.terraform.outputs.ec2_ip }}
-         for i in {1..30}; do
-           echo "Waiting for SSH on $HOST..."
-           if timeout 5 bash -c "</dev/tcp/$HOST/22"; then
-             echo "SSH is ready"
-             ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
-             break
-           fi
-         sleep 10
-        done
+          HOST=${{ needs.terraform.outputs.ec2_ip }}
+          for i in {1..30}; do
+            echo "Waiting for SSH on $HOST..."
+            if timeout 5 bash -c "</dev/tcp/$HOST/22"; then
+              echo "SSH is ready"
+              ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
+              break
+            fi
+            sleep 10
+          done
 
-
-      # 2️⃣ Deploy to EC2
       - name: Deploy to EC2
         run: |
           HOST=${{ needs.terraform.outputs.ec2_ip }}
           USER=${{ secrets.EC2_USER }}
-          
+
           echo "Deploying to $USER@$HOST..."
-          
+
           # Create app directory if it doesn't exist
           ssh $USER@$HOST "mkdir -p /home/$USER/app"
-          
+
           # Copy website files and deploy script
           scp -r index.html style.css script.js deploy.sh $USER@$HOST:/home/$USER/app/
-          
+
           # Execute deploy script
           ssh $USER@$HOST "chmod +x /home/$USER/app/deploy.sh && cd /home/$USER/app && sudo ./deploy.sh"
 
