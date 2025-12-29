@@ -77,8 +77,8 @@ jobs:
           mkdir -p ~/.ssh
           # Write private key (expand variable)
           cat <<EOF > ~/.ssh/id_ed25519
-${{ needs.terraform.outputs.private_key }}
-EOF
+          ${{ needs.terraform.outputs.private_key }}
+          EOF
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Wait for EC2 SSH and add to known_hosts
@@ -109,6 +109,7 @@ EOF
 
           # Execute deploy script
           ssh $USER@$HOST "chmod +x /home/$USER/app/deploy.sh && cd /home/$USER/app && sudo ./deploy.sh"
+
 
 
 
