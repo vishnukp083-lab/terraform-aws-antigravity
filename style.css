@@ -1,0 +1,112 @@
+:root {
+    --bg-color: #0a0a0a;
+    --text-color: #e0e0e0;
+    --primary-color: #00f2ff;
+    --secondary-color: #7000ff;
+    --glass-bg: rgba(255, 255, 255, 0.05);
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Outfit', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    overflow-x: hidden;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 0;
+}
+
+.logo {
+    font-weight: 700;
+    font-size: 1.5rem;
+    letter-spacing: 2px;
+    background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.nav-links {
+    list-style: none;
+    display: flex;
+    gap: 30px;
+}
+
+.nav-links a {
+    color: var(--text-color);
+    text-decoration: none;
+    font-weight: 300;
+    transition: color 0.3s;
+}
+
+.nav-links a:hover {
+    color: var(--primary-color);
+}
+
+.hero {
+    height: 80vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+h1 {
+    font-size: 4rem;
+    line-height: 1.2;
+    margin-bottom: 20px;
+}
+
+.highlight {
+    color: var(--primary-color);
+}
+
+p {
+    font-size: 1.5rem;
+    color: #a0a0a0;
+    margin-bottom: 40px;
+}
+
+.glow-on-hover {
+    padding: 15px 40px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #fff;
+    background: linear-gradient(45deg, var(--secondary-color), var(--primary-color));
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.glow-on-hover:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(0, 242, 255, 0.5);
+}
+
+.fade-in {
+    opacity: 0;
+    animation: fadeIn 1s ease-out forwards;
+}
+
+.fade-in-delay {
+    opacity: 0;
+    animation: fadeIn 1s ease-out 0.5s forwards;
+}
+
+@keyframes fadeIn {
+    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateY(20px); }
+}
