@@ -92,8 +92,8 @@ jobs:
           EOF 
           chmod 600 ~/.ssh/id_ed25519
 
-     - name: Wait for EC2 SSH and add to known_hosts
-       run: |
+      - name: Wait for EC2 SSH and add to known_hosts
+        run: |
          HOST=${{ needs.terraform.outputs.ec2_ip }}
          for i in {1..30}; do
            echo "Waiting for SSH on $HOST..."
