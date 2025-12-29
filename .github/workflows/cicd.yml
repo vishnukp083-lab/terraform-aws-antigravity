@@ -82,14 +82,18 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       # 1️⃣ Setup SSH using dynamic private key from Terraform
+      
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ needs.terraform.outputs.private_key }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          
-          # Add Host to Known Hosts to avoid interactive prompt
-          ssh-keyscan -H ${{ needs.terraform.outputs.ec2_ip }} >> ~/.ssh/known_hosts
+
+          cat <<'EOF' > ~/.ssh/id_ed25519
+          ${{ needs.terraform.outputs.private_key }}
+          EOF
+
+          chmod 600 ~/.ssh/id_ed25519
+
+
 
       # 2️⃣ Deploy to EC2
       - name: Deploy to EC2
