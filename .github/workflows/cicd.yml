@@ -86,7 +86,7 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-      # Write private key (expand variable)
+          # Write private key (expand variable)
           cat <<EOF > ~/.ssh/id_ed25519
           ${{ needs.terraform.outputs.private_key }}
           EOF 
